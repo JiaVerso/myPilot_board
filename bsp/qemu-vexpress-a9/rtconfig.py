@@ -30,7 +30,7 @@ ARCH        ='arm'
 CPU         ='cortex-a'
 CROSS_TOOL  = 'gcc'
 PLATFORM    = 'gcc'
-EXEC_PATH   = os.getenv('RTT_EXEC_PATH') or r'/opt/st/stm32cubeclt_1.21.0/GNU-tools-for-STM32/bin/arm-none-eabi-gcc'
+EXEC_PATH   = os.getenv('RTT_EXEC_PATH') or r'/opt/st/stm32cubeclt_1.21.0/GNU-tools-for-STM32/bin'
 BUILD       = 'debug'
 
 LINK_SCRIPT = 'link.lds'

@@ -9,3 +9,4 @@ PKGS_DIR := packages
 source "$(RTT_DIR)/Kconfig"
 osource "$PKGS_DIR/Kconfig"
 source "$(BSP_DIR)/drivers/Kconfig"
+osource "$(BSP_DIR)/applications/myPilot_lite/Kconfig"

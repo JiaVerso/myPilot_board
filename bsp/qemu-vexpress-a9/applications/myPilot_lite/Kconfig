@@ -1,0 +1,17 @@
+# This is an menconfig file for displaying the myPilot_lite project in the RT-Thread configuration menu.
+
+menuconfig BSP_USING_MYPILOT_LITE
+    bool "Enable myPilot_lite flight-control practice project"
+    default y
+    help
+        Enable the minimal myPilot_lite scaffold used to port and study
+        StarryPilot on RT-Thread v5.x with the QEMU vexpress-a9 BSP.
+
+if BSP_USING_MYPILOT_LITE
+
+config MYPILOT_LITE_LOOP_HZ
+    int "Initial flight loop frequency (Hz)"
+    range 1 1000
+    default 250
+
+endif

@@ -1,0 +1,22 @@
+from building import *
+
+cwd = GetCurrentDir()
+
+src = []
+src += Glob('app/*.c')
+src += Glob('port/*.c')
+src += Glob('simulator/*.c')
+src += Glob('core/math/*.c')
+src += Glob('core/filter/*.c')
+src += Glob('core/attitude/*.c')
+src += Glob('core/control/*.c')
+src += Glob('core/mixer/*.c')
+src += Glob('middleware/topic/*.c')
+
+CPPPATH = [cwd + '/include']
+
+group = DefineGroup('myPilot_lite', src,
+                    depend=['BSP_USING_MYPILOT_LITE'],
+                    CPPPATH=CPPPATH)
+
+Return('group')

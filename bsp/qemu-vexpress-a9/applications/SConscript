@@ -1,15 +1,12 @@
 import os
 from building import *
 
-cwd     = GetCurrentDir()
-src     = Glob('*.c') + Glob('*.cpp')
-CPPPATH = [cwd]
+cwd = GetCurrentDir()
+objs = []
 
-group = DefineGroup('Applications', src, depend = [''], CPPPATH = CPPPATH)
+for entry in os.listdir(cwd):
+    sconscript = os.path.join(cwd, entry, 'SConscript')
+    if os.path.isfile(sconscript):
+        objs += SConscript(sconscript)
 
-list = os.listdir(cwd)
-for item in list:
-    if os.path.isfile(os.path.join(cwd, item, 'SConscript')):
-        group = group + SConscript(os.path.join(item, 'SConscript'))
-
-Return('group')
+Return('objs')

@@ -66,7 +66,7 @@
 #define RT_ALIGN_SIZE 8
 #define RT_THREAD_PRIORITY_256
 #define RT_THREAD_PRIORITY_MAX 256
-#define RT_TICK_PER_SECOND 100
+#define RT_TICK_PER_SECOND 1000
 #define RT_USING_OVERFLOW_CHECK
 #define RT_USING_HOOK
 #define RT_HOOK_USING_FUNC_PTR
@@ -231,10 +231,7 @@
 
 /* Timezone and Daylight Saving Time */
 
-#define RT_LIBC_USING_LIGHT_TZ_DST
-#define RT_LIBC_TZ_DEFAULT_HOUR 8
-#define RT_LIBC_TZ_DEFAULT_MIN 0
-#define RT_LIBC_TZ_DEFAULT_SEC 0
+#define RT_LIBC_USING_FULL_TZ_DST
 /* end of Timezone and Daylight Saving Time */
 /* end of ISO-ANSI C layer */
 
@@ -250,6 +247,8 @@
 #define RT_USING_POSIX_DELAY
 #define RT_USING_POSIX_CLOCK
 #define RT_USING_POSIX_TIMER
+#define RT_USING_PTHREADS
+#define PTHREAD_NUM_MAX 8
 
 /* Interprocess Communication (IPC) */
 
@@ -262,6 +261,7 @@
 
 /* end of Interprocess Communication (IPC) */
 /* end of POSIX (Portable Operating System Interface) layer */
+#define RT_USING_CPLUSPLUS
 /* end of C/C++ and POSIX layer */
 
 /* Network */
@@ -381,6 +381,8 @@
 /* Micrium: Micrium software products porting for RT-Thread */
 
 /* end of Micrium: Micrium software products porting for RT-Thread */
+#define PKG_USING_TZ_DATABASE
+#define PKG_USING_TZ_DATABASE_LATEST_VERSION
 /* end of system packages */
 
 /* peripheral libraries and drivers */
@@ -536,5 +538,7 @@
 #define BSP_USING_UART0
 /* end of Onboard Peripheral Drivers */
 /* end of Hardware Drivers Config */
+#define BSP_USING_MYPILOT_LITE
+#define MYPILOT_LITE_LOOP_HZ 250
 
 #endif

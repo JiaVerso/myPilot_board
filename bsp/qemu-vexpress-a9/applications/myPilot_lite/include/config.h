@@ -1,0 +1,17 @@
+#ifndef MYPILOT_LITE_FLIGHT_CONFIG_H
+#define MYPILOT_LITE_FLIGHT_CONFIG_H
+
+#include <rtconfig.h>
+
+#ifdef MYPILOT_LITE_LOOP_HZ
+#define FLIGHT_LOOP_HZ MYPILOT_LITE_LOOP_HZ
+#else
+#define FLIGHT_LOOP_HZ 250
+#endif
+
+#define FLIGHT_THREAD_NAME       "mp_flight"
+#define FLIGHT_THREAD_STACK_SIZE 4096
+#define TEST_THREAD_PRIORITY   12
+#define FLIGHT_THREAD_TIMESLICE  5
+
+#endif
