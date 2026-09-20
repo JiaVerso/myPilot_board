@@ -374,7 +374,6 @@ uint8_t sensor_get_device_id(char* device_name)
 static Baro_Machine_State s_baro_state;
 static Baro_Position_t s_baro_pos;  
 
-
 rt_err_t _baro_trig_conversion(uint8_t addr)
 {
 	return rt_device_control(baro_device_t, SENSOR_CONVERSION, (void*)&addr);
@@ -421,7 +420,7 @@ rt_err_t _baro_read_raw_press(void)
 * 4: read temperature raw dara
 * 5: compute temperature,pressure,altitute according to prom param.
 */
-rt_err_t sensor_process_baro_state_machine(void)
+rt_err_t sensor_process_bar_ostate_machine(void)
 {
 	rt_err_t err = RT_ERROR;
 	
@@ -493,6 +492,7 @@ bool sensor_baro_get_update_flag(void)
 	return _baro_update_flag;
 #endif
 }
+
 void sensor_baro_clear_update_flag(void)
 {
 	_baro_update_flag = false;
@@ -519,7 +519,7 @@ bool sensor_baro_update(void)
 
 Baro_Machine_State sensor_baro_get_state(void)
 {
-	return baro_state;
+	return s_baro_state;
 }
 
 MS5611_REPORT_Def* sensor_baro_get_report(void)
@@ -534,6 +534,51 @@ BaroPosition sensor_baro_get_position(void)
 {
 	return _baro_pos;
 }
+
+ /* barometer data collection */
+static void _baro_process(void)
+{
+    if (!sensor_baro_ready() || !sensor_baro_update()) {
+        return;
+    }
+ 
+    MS5611_REPORT_Def* rpt = sensor_baro_get_report();
+    RT_ASSERT(rpt != NULL);
+ 
+    float alt = -rpt->altitude;                 /* 气压高度向上为正，转NED */
+ 
+    if (!s_baro.inited) {
+        /* 首帧只建立基准：避免异常dt与速度尖峰 */
+        s_baro.inited   = true;
+        s_baro.last_alt = alt;
+        s_baro.last_ms  = rpt->time_stamp;
+        s_baro_pos.altitude   = alt;
+        s_baro_pos.velocity   = 0.0f;
+        s_baro_pos.time_stamp = rpt->time_stamp;
+        mcn_publish(MCN_ID(SENSOR_BARO), rpt);
+        mcn_publish(MCN_ID(BARO_POSITION), &s_baro_pos);
+        return;
+    }
+ 
+    float dt = (float)(rpt->time_stamp - s_baro.last_ms) * 1e-3f;
+    if (dt <= 0.0f) {
+        dt = BARO_DT_FALLBACK_S;                /* 时间戳重复/回跳时兜底 */
+    }
+ 
+    float vel_raw = (alt - s_baro.last_alt) / dt;
+    /* 注意：固定alpha与采样率绑定；若baro间隔不均，建议改为
+       alpha = dt / (BARO_VEL_TAU + dt) 的形式 */
+    s_baro_pos.velocity += BARO_VEL_LPF_ALPHA * (vel_raw - s_baro_pos.velocity);
+    s_baro_pos.altitude   = alt;
+    s_baro_pos.time_stamp = rpt->time_stamp;
+ 
+    mcn_publish(MCN_ID(SENSOR_BARO), rpt);
+    mcn_publish(MCN_ID(BARO_POSITION), &s_baro_pos);
+ 
+    s_baro.last_alt = alt;
+    s_baro.last_ms  = rpt->time_stamp;
+}
+ 
 
 /**************************	LIDAR-LITE API **************************/
 void lidar_lite_store(float dis)
@@ -878,74 +923,6 @@ static void _imu_channel_process(imu_channel_t* ch)
     }
 }
 
- /* barometer data collection */
-static void _collect_baro(void)
-{
-    if (!sensor_baro_ready()) return;
-
-    if (sensor_baro_update() != RT_EOK) {
-        _baro_err("baro update fail\n");
-        return;
-    }
-
-    MS5611_REPORT_Def* rpt = sensor_baro_get_report();
-    float dt = (rpt->time_stamp - s_baro.last_ms) * 1e-3f;
-
-    if (!s_baro.inited) {
-        /* 首次只记录，不计算速度 */
-        s_baro.inited = true;
-        dt = 0.0f;
-    } else if (dt <= 0.0f) {
-        dt = BARO_DT_FALLBACK; /* 时间戳异常时的兜底 */
-    }
-
-    _baro_pos.altitude = -rpt->altitude; /* 转NED */
-    ...
-}
-
-static void _baro_process(void)
-{
-    if (!sensor_baro_ready() || sensor_baro_update() != RT_EOK) {
-        return;
-    }
- 
-    MS5611_REPORT_Def* rpt = sensor_baro_get_report();
-    RT_ASSERT(rpt != NULL);
- 
-    float alt = -rpt->altitude;                 /* 气压高度向上为正，转NED */
- 
-    if (!s_baro.inited) {
-        /* 首帧只建立基准：避免异常dt与速度尖峰 */
-        s_baro.inited   = true;
-        s_baro.last_alt = alt;
-        s_baro.last_ms  = rpt->time_stamp;
-        s_baro_pos.altitude   = alt;
-        s_baro_pos.velocity   = 0.0f;
-        s_baro_pos.time_stamp = rpt->time_stamp;
-        mcn_publish(MCN_ID(SENSOR_BARO), rpt);
-        mcn_publish(MCN_ID(BARO_POSITION), &s_baro_pos);
-        return;
-    }
- 
-    float dt = (float)(rpt->time_stamp - s_baro.last_ms) * 1e-3f;
-    if (dt <= 0.0f) {
-        dt = BARO_DT_FALLBACK_S;                /* 时间戳重复/回跳时兜底 */
-    }
- 
-    float vel_raw = (alt - s_baro.last_alt) / dt;
-    /* 注意：固定alpha与采样率绑定；若baro间隔不均，建议改为
-       alpha = dt / (BARO_VEL_TAU + dt) 的形式 */
-    s_baro_pos.velocity += BARO_VEL_LPF_ALPHA * (vel_raw - s_baro_pos.velocity);
-    s_baro_pos.altitude   = alt;
-    s_baro_pos.time_stamp = rpt->time_stamp;
- 
-    mcn_publish(MCN_ID(SENSOR_BARO), rpt);
-    mcn_publish(MCN_ID(BARO_POSITION), &s_baro_pos);
- 
-    s_baro.last_alt = alt;
-    s_baro.last_ms  = rpt->time_stamp;
-}
- 
 
 static void _gps_derive_velocity(const struct vehicle_gps_position_s* gps)
 {
