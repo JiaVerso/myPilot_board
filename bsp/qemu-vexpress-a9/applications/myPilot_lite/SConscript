@@ -12,8 +12,10 @@ src += Glob('core/attitude/*.c')
 src += Glob('core/control/*.c')
 src += Glob('core/mixer/*.c')
 src += Glob('middleware/topic/*.c')
+src += Glob('Driver/MP_Baro/*.cpp')
 
-CPPPATH = [cwd + '/include']
+CPPPATH = [cwd + '/include',
+           cwd + '/Driver/MP_Baro']
 
 group = DefineGroup('myPilot_lite', src,
                     depend=['BSP_USING_MYPILOT_LITE'],

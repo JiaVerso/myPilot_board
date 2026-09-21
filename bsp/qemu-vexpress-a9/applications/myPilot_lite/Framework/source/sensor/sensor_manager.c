@@ -374,12 +374,13 @@ uint8_t sensor_get_device_id(char* device_name)
 static Baro_Machine_State s_baro_state;
 static Baro_Position_t s_baro_pos;  
 
-rt_err_t _baro_trig_conversion(uint8_t addr)
+static rt_err_t _baro_trig_conversion(uint8_t addr)
 {
 	return rt_device_control(baro_device_t, SENSOR_CONVERSION, (void*)&addr);
 }
 
-rt_bool_t _baro_is_conv_finish(void)
+ /* check if baro conversion is finished. */
+static rt_bool_t _baro_is_conv_finish(void)
 {
 	if(rt_device_control(baro_device_t, SENSOR_IS_CONV_FIN, RT_NULL) == RT_EOK)
 	{
@@ -390,7 +391,7 @@ rt_bool_t _baro_is_conv_finish(void)
 	}
 }
 
-rt_err_t _baro_read_raw_temp(void)
+static rt_err_t _baro_read_raw_temp(void)
 {
 	rt_err_t err;
 	if(rt_device_read(baro_device_t, RAW_TEMPERATURE_POS, NULL, 1))
@@ -401,7 +402,7 @@ rt_err_t _baro_read_raw_temp(void)
 	return err;
 }
 
-rt_err_t _baro_read_raw_press(void)
+static rt_err_t _baro_read_raw_press(void)
 {
 	rt_err_t err;
 	if(rt_device_read(baro_device_t, RAW_PRESSURE_POS, NULL, 1))
@@ -413,6 +414,7 @@ rt_err_t _baro_read_raw_press(void)
 }
 
 /* 
+* 非阻塞状态机实现
 * There are 5 steps to get barometer report
 * 1: convert D1
 * 2: read pressure raw data
@@ -423,18 +425,18 @@ rt_err_t _baro_read_raw_press(void)
 rt_err_t sensor_process_bar_ostate_machine(void)
 {
 	rt_err_t err = RT_ERROR;
-	
-	switch((uint8_t)baro_state)
+
+	switch((uint8_t)s_baro_state)
 	{
 		case S_CONV_1:
 		{
-			err = _baro_trig_conversion(ADDR_CMD_CONVERT_D1);
+			err = _baro_trig_conversion(ADDR_CMD_CONVERT_D1);     /* start */
 			if(err == RT_EOK)
-				baro_state = S_CONV_2;
+				s_baro_state = S_CONV_2;
 		}break;
 		case S_CONV_2:
 		{
-			if(!_baro_is_conv_finish()){	//need 9.04ms to converse
+			if(!_baro_is_conv_finish()){	/* need 9.04ms to converse */
 				err = RT_EBUSY;
 			}else{
 				err = _baro_read_raw_press();
@@ -442,12 +444,12 @@ rt_err_t sensor_process_bar_ostate_machine(void)
 					/* directly start D2 conversion */
 					err = _baro_trig_conversion(ADDR_CMD_CONVERT_D2);
 					if(err == RT_EOK)
-						baro_state = S_COLLECT_REPORT;
+						s_baro_state = S_COLLECT_REPORT;
 					else
-						baro_state = S_CONV_1;
+						s_baro_state = S_CONV_1;
 				}
 				else
-					baro_state = S_CONV_1;	//if err, restart
+					s_baro_state = S_CONV_1;	//if err, restart
 			}
 		}break;
 		case S_COLLECT_REPORT:
@@ -455,13 +457,13 @@ rt_err_t sensor_process_bar_ostate_machine(void)
 			if(!_baro_is_conv_finish()){	//need 9.04ms to converse
 				err = RT_EBUSY;
 			}else{
-				baro_state = S_CONV_1;
+				s_baro_state = S_CONV_1;
 				err = _baro_read_raw_temp();
 				if(err == RT_EOK){
-					if(rt_device_read(baro_device_t, COLLECT_DATA_POS, (void*)&report_baro, 1)){
+					if(rt_device_read(baro_device_t, COLLECT_DATA_POS, (void*)&s_report_baro, 1)){
 						/* start D1 conversion */
 						if(_baro_trig_conversion(ADDR_CMD_CONVERT_D1) == RT_EOK)
-							baro_state = S_CONV_2;
+							s_baro_state = S_CONV_2;
 					}else{
 						err = RT_ERROR;
 					}
@@ -522,7 +524,7 @@ Baro_Machine_State sensor_baro_get_state(void)
 	return s_baro_state;
 }
 
-MS5611_REPORT_Def* sensor_baro_get_report(void)
+Baro_Report_Def* sensor_baro_get_report(void)
 {
 #ifdef HIL_SIMULATION
 	mcn_copy_from_hub(MCN_ID(SENSOR_BARO), &report_baro);
@@ -530,7 +532,7 @@ MS5611_REPORT_Def* sensor_baro_get_report(void)
 	return &report_baro;
 }
 
-BaroPosition sensor_baro_get_position(void)
+Baro_Position_t sensor_baro_get_position(void)
 {
 	return _baro_pos;
 }
@@ -541,8 +543,8 @@ static void _baro_process(void)
     if (!sensor_baro_ready() || !sensor_baro_update()) {
         return;
     }
- 
-    MS5611_REPORT_Def* rpt = sensor_baro_get_report();
+
+    Baro_Report_Def* rpt = sensor_baro_get_report();
     RT_ASSERT(rpt != NULL);
  
     float alt = -rpt->altitude;                 /* 气压高度向上为正，转NED */

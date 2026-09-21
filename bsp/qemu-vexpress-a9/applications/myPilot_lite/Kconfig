@@ -14,4 +14,29 @@ config MYPILOT_LITE_LOOP_HZ
     range 1 1000
     default 250
 
+config MYPILOT_USING_DPS368
+    bool "Automatically register DPS368 barometer"
+    depends on RT_USING_I2C
+    default n
+    help
+        Register the DPS368 as an RT-Thread device during application init.
+        Keep this disabled for qemu-vexpress-a9 unless an I2C sensor model is
+        provided. The driver is still compiled and can be registered manually.
+
+if MYPILOT_USING_DPS368
+
+config MYPILOT_DPS368_DEVICE_NAME
+    string "DPS368 RT-Thread device name"
+    default "baro0"
+
+config MYPILOT_DPS368_I2C_BUS_NAME
+    string "DPS368 I2C bus name"
+    default "i2c1"
+
+config MYPILOT_DPS368_I2C_ADDRESS
+    hex "DPS368 7-bit I2C address"
+    range 0x76 0x77
+    default 0x77
+
+endif
 endif

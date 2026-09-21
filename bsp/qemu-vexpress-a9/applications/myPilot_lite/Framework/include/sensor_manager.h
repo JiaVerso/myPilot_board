@@ -12,9 +12,6 @@
 
 #include <rtthread.h>
 #include <stdint.h>
-#include "ms5611.h"
-#include "global.h"
-#include "ap_math.h"
 
 //#define USE_EXTERNAL_MAG_DEV
 
@@ -37,7 +34,7 @@
 #endif
 //#define GYR_DEVICE_NAME			"l3gd20h"
 #define GYR_DEVICE_NAME			"mpu6000"
-#define BARO_DEVICE_NAME		"ms5611"
+#define BARO_DEVICE_NAME		"baro"
 #define GPS_DEVICE_NAME			"gps"
 #define LIDAR_DEVICE_NAME		"lidar"
 
@@ -145,9 +142,9 @@ rt_err_t sensor_gyr_get_calibrated_data(float gyr[3]);
 
 /* barometer API */
 Baro_Machine_State sensor_baro_get_state(void);
-MS5611_REPORT_Def* sensor_baro_get_report(void);
-BaroPosition sensor_baro_get_position(void);
-rt_err_t sensor_process_baro_state_machine(void);
+Baro_Report_Def* sensor_baro_get_report(void);
+Baro_Position_t sensor_baro_get_position(void);
+rt_err_t sensor_process_bar_ostate_machine(void);
 bool sensor_baro_get_update_flag(void);
 void sensor_baro_clear_update_flag(void);
 
