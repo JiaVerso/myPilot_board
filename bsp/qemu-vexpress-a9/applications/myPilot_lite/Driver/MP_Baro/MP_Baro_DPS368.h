@@ -1,3 +1,22 @@
+/*
+ * File      : MP_Baro_DPS368.h
+ * This file is part of RT-Thread RTOS
+ * COPYRIGHT (C) 2026, Fy Development Team
+ *
+ * The license and distribution terms for this file may be
+ * found in the file LICENSE in this distribution or at
+ * http://www.rt-thread.org/license/LICENSE
+ *
+ * Infineon XENSIV DPS368 pressure sensor driver for RT-Thread.
+ *
+ * The register layout, coefficient decoding and scaling factors follow the
+ * Infineon arduino-xensiv-dps3xx reference driver (DPS368/DPS310 family). 
+ * 
+ * Change Logs:
+ * Date           Author       Notes
+ * 2026-09-22     JiaVerso      first commit.
+ */
+
 #ifndef MYPILOT_MP_BARO_DPS368_H
 #define MYPILOT_MP_BARO_DPS368_H
 
@@ -6,9 +25,11 @@
 
 /* DPS368 supports both addresses, selected by SDO. */
 #define MP_BARO_DPS368_I2C_ADDR_LOW       0x76U
+
+/* DPS368 supports both addresses, this default address. */
 #define MP_BARO_DPS368_I2C_ADDR_HIGH      0x77U
 
-/* Values written into the three-bit rate/oversampling fields. */
+/* output rate settings. */
 enum mp_baro_dps368_rate
 {
     MP_BARO_DPS368_RATE_1_HZ = 0,
@@ -21,6 +42,7 @@ enum mp_baro_dps368_rate
     MP_BARO_DPS368_RATE_128_HZ
 };
 
+/* oversampling osr settings. */
 enum mp_baro_dps368_oversampling
 {
     MP_BARO_DPS368_OSR_1 = 0,
@@ -33,7 +55,7 @@ enum mp_baro_dps368_oversampling
     MP_BARO_DPS368_OSR_128
 };
 
-struct mp_baro_dps368_config
+typedef struct mp_baro_dps368_config_t
 {
     rt_uint8_t pressure_rate;
     rt_uint8_t pressure_oversampling;
@@ -41,15 +63,15 @@ struct mp_baro_dps368_config
     rt_uint8_t temperature_oversampling;
 };
 
-struct mp_baro_dps368_report
+typedef struct mp_baro_dps368_report_t
 {
     float pressure_pa;
-    float temperature_c;
+    float temperature_c; 
     rt_uint64_t timestamp_us;
     rt_uint32_t sequence;
 };
 
-struct mp_baro_dps368_health
+typedef struct mp_baro_dps368_health_t
 {
     rt_uint8_t healthy;
     rt_uint8_t initialized;
@@ -64,8 +86,9 @@ struct mp_baro_dps368_health
  * GET_HEALTH : struct mp_baro_dps368_health *
  * SET_CONFIG : const struct mp_baro_dps368_config *
  * GET_CONFIG : struct mp_baro_dps368_config *
+ * 
  */
-#define MP_BARO_DPS368_CTRL_RESET         0x1001
+#define MP_BARO_DPS368_CTRL_RESET         0x1001     /* Device Control Commands */
 #define MP_BARO_DPS368_CTRL_GET_ID        0x1002
 #define MP_BARO_DPS368_CTRL_GET_HEALTH    0x1003
 #define MP_BARO_DPS368_CTRL_SET_CONFIG    0x1004
@@ -100,11 +123,13 @@ public:
     rt_err_t init();
     rt_err_t reset();
     rt_err_t read(struct mp_baro_dps368_report &report);
-    rt_err_t set_config(const struct mp_baro_dps368_config &config);
+    rt_err_t set_config(const struct mp_baro_dps368_config_t &config);
     void get_health(struct mp_baro_dps368_health &health) const;
 
 private:
-    struct Calibration
+
+    /* 温度与气压补偿多项式参数 */
+    typedef struct Calibration_t
     {
         rt_int16_t c0;
         rt_int16_t c1;
@@ -119,15 +144,18 @@ private:
     };
 
     rt_err_t initialize_unlocked();
-    rt_err_t configure_unlocked(const struct mp_baro_dps368_config &config);
+    rt_err_t configure_unlocked(const struct mp_baro_dps368_config_t &config);
     rt_err_t read_calibration();
     rt_err_t wait_sensor_ready(rt_int32_t timeout_ms);
     rt_err_t read_registers(rt_uint8_t reg, rt_uint8_t *data, rt_size_t length);
     rt_err_t write_register(rt_uint8_t reg, rt_uint8_t value);
     rt_err_t update_register(rt_uint8_t reg, rt_uint8_t clear_mask, rt_uint8_t set_mask);
     rt_err_t read_raw(rt_int32_t &pressure, rt_int32_t &temperature);
+
     void compensate(rt_int32_t raw_pressure, rt_int32_t raw_temperature,
                     float &pressure_pa, float &temperature_c) const;
+
+    /* static functions belong to ClassName , don't have this pointer */
     static rt_int32_t sign_extend(rt_uint32_t value, rt_uint8_t bits);
     static bool config_is_valid(const struct mp_baro_dps368_config &config);
     static rt_uint64_t timestamp_us();
@@ -145,8 +173,8 @@ private:
     struct rt_device _device;
     struct rt_i2c_bus_device *_bus;
     struct rt_mutex _lock;
-    Calibration _calibration;
-    struct mp_baro_dps368_config _config;
+    Calibration_t _calibration;
+    struct mp_baro_dps368_config_t _config;
     rt_uint32_t _sequence;
     rt_uint32_t _transfer_errors;
     rt_uint8_t _address;

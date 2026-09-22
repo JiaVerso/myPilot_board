@@ -1,10 +1,21 @@
 /*
+ * File      : MP_Baro_DPS368.cpp
+ * This file is part of RT-Thread RTOS
+ * COPYRIGHT (C) 2026, Fy Development Team
+ *
+ * The license and distribution terms for this file may be
+ * found in the file LICENSE in this distribution or at
+ * http://www.rt-thread.org/license/LICENSE
+ *
  * Infineon XENSIV DPS368 pressure sensor driver for RT-Thread.
  *
  * The register layout, coefficient decoding and scaling factors follow the
- * Infineon arduino-xensiv-dps3xx reference driver (DPS368/DPS310 family).
+ * Infineon arduino-xensiv-dps3xx reference driver (DPS368/DPS310 family). 
+ * 
+ * Change Logs:
+ * Date           Author       Notes
+ * 2026-09-22     JiaVerso      first commit.
  */
-
 #include "MP_Baro_DPS368.h"
 
 #include <drivers/dev_i2c.h>
@@ -31,9 +42,9 @@
 #define DPS368_MEAS_COEF_READY       (1U << 7)
 #define DPS368_MEAS_CONTINUOUS_BOTH  0x07U
 
-#define DPS368_CFG_PRESSURE_SHIFT    (1U << 2)
+#define DPS368_CFG_PRESSURE_SHIFT    (1U << 2)     /* 数据位移使能位 */
 #define DPS368_CFG_TEMPERATURE_SHIFT (1U << 3)
-#define DPS368_SOFT_RESET            0x09U
+#define DPS368_SOFT_RESET            0x09U       
 #define DPS368_TEMPERATURE_EXTERNAL  (1U << 7)
 
 #define DPS368_READY_TIMEOUT_MS      100
@@ -52,6 +63,9 @@ static const float dps368_scaling_factors[8] =
     2088960.0f
 };
 
+/**
+ * operations set for device object
+ */
 static const struct rt_device_ops dps368_device_ops =
 {
     MP_Baro_DPS368::device_init,
@@ -558,12 +572,14 @@ void MP_Baro_DPS368::get_health(struct mp_baro_dps368_health &health) const
     health.transfer_errors = _transfer_errors;
 }
 
+// 解引用
 rt_err_t MP_Baro_DPS368::device_init(rt_device_t device)
 {
     MP_Baro_DPS368 *driver = static_cast<MP_Baro_DPS368 *>(device->user_data);
     return driver != RT_NULL ? driver->init() : -RT_EINVAL;
 }
 
+/* dummy operations. */
 rt_err_t MP_Baro_DPS368::device_open(rt_device_t device, rt_uint16_t oflag)
 {
     (void)device;
@@ -571,6 +587,7 @@ rt_err_t MP_Baro_DPS368::device_open(rt_device_t device, rt_uint16_t oflag)
     return RT_EOK;
 }
 
+/* dummy operations. */
 rt_err_t MP_Baro_DPS368::device_close(rt_device_t device)
 {
     (void)device;
