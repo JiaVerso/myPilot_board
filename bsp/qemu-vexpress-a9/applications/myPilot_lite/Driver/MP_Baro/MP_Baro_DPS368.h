@@ -122,9 +122,9 @@ public:
                              rt_uint8_t address);
     rt_err_t init();
     rt_err_t reset();
-    rt_err_t read(struct mp_baro_dps368_report &report);
+    rt_err_t read(struct mp_baro_dps368_report_t &report);
     rt_err_t set_config(const struct mp_baro_dps368_config_t &config);
-    void get_health(struct mp_baro_dps368_health &health) const;
+    void get_health(struct mp_baro_dps368_health_t &health) const;
 
 private:
 

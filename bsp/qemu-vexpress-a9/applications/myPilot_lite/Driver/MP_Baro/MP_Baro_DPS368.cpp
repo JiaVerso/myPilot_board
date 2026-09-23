@@ -372,7 +372,7 @@ rt_err_t MP_Baro_DPS368::configure_unlocked(const struct mp_baro_dps368_config &
     return result;
 }
 
-rt_err_t MP_Baro_DPS368::set_config(const struct mp_baro_dps368_config &config)
+rt_err_t MP_Baro_DPS368::set_config(const struct mp_baro_dps368_config_t &config)
 {
     rt_err_t result;
 
@@ -394,7 +394,7 @@ rt_err_t MP_Baro_DPS368::set_config(const struct mp_baro_dps368_config &config)
     return result;
 }
 
-rt_err_t MP_Baro_DPS368::read(struct mp_baro_dps368_report &report)
+rt_err_t MP_Baro_DPS368::read(struct mp_baro_dps368_report_t &report)
 {
     rt_uint8_t status;
     rt_int32_t raw_pressure;
@@ -470,10 +470,11 @@ rt_err_t MP_Baro_DPS368::read_raw(rt_int32_t &pressure, rt_int32_t &temperature)
     return RT_EOK;
 }
 
+ /* 温度与气压补偿 */
 void MP_Baro_DPS368::compensate(rt_int32_t raw_pressure,
                                 rt_int32_t raw_temperature,
                                 float &pressure_pa,
-                                float &temperature_c) const
+                                float &temperature_c) const  /* 不修改成员函数内部的变量 */
 {
     const float temperature_scaled =
         (float)raw_temperature / dps368_scaling_factors[_config.temperature_oversampling];
@@ -504,10 +505,12 @@ rt_err_t MP_Baro_DPS368::read_registers(rt_uint8_t reg,
         return -RT_EINVAL;
     }
 
+	/* write i2c address pointer */
     messages[0].addr = _address;
     messages[0].flags = RT_I2C_WR;
     messages[0].len = 1;
     messages[0].buf = &reg;
+
     messages[1].addr = _address;
     messages[1].flags = RT_I2C_RD;
     messages[1].len = (rt_uint16_t)length;
@@ -563,8 +566,8 @@ rt_uint64_t MP_Baro_DPS368::timestamp_us()
     return (rt_uint64_t)rt_tick_get_millisecond() * 1000ULL;
 }
 
-void MP_Baro_DPS368::get_health(struct mp_baro_dps368_health &health) const
-{
+void MP_Baro_DPS368::get_health(struct mp_baro_dps368_health_t &health) const     /* 常成员函数 */ 
+{																				/* const void --> 返回值是常量 */ 	
     health.healthy = _healthy ? 1U : 0U;
     health.initialized = _initialized ? 1U : 0U;
     health.product_id = _product_id;
@@ -601,12 +604,12 @@ rt_ssize_t MP_Baro_DPS368::device_read(rt_device_t device, rt_off_t pos,
     (void)pos;
 
     if (driver == RT_NULL || buffer == RT_NULL ||
-        size < sizeof(struct mp_baro_dps368_report))
+        size < sizeof(struct mp_baro_dps368_report_t))
     {
         return 0;
     }
-    return driver->read(*static_cast<struct mp_baro_dps368_report *>(buffer)) == RT_EOK ?
-           (rt_ssize_t)sizeof(struct mp_baro_dps368_report) : 0;
+    return driver->read(*static_cast<struct mp_baro_dps368_report_t *>(buffer)) == RT_EOK ?
+           (rt_ssize_t)sizeof(struct mp_baro_dps368_report_t) : 0;
 }
 
 rt_err_t MP_Baro_DPS368::device_control(rt_device_t device, int command, void *args)
@@ -636,7 +639,7 @@ rt_err_t MP_Baro_DPS368::device_control(rt_device_t device, int command, void *a
     case MP_BARO_DPS368_CTRL_GET_HEALTH:
         if (args != RT_NULL)
         {
-            driver->get_health(*static_cast<struct mp_baro_dps368_health *>(args));
+            driver->get_health(*static_cast<struct mp_baro_dps368_health_t *>(args));
             return RT_EOK;
         }
         break;
@@ -644,14 +647,14 @@ rt_err_t MP_Baro_DPS368::device_control(rt_device_t device, int command, void *a
     case MP_BARO_DPS368_CTRL_SET_CONFIG:
         if (args != RT_NULL)
         {
-            return driver->set_config(*static_cast<const struct mp_baro_dps368_config *>(args));
+            return driver->set_config(*static_cast<const struct mp_baro_dps368_config_t *>(args));
         }
         break;
 
     case MP_BARO_DPS368_CTRL_GET_CONFIG:
         if (args != RT_NULL)
         {
-            *static_cast<struct mp_baro_dps368_config *>(args) = driver->_config;
+            *static_cast<struct mp_baro_dps368_config_t *>(args) = driver->_config;
             return RT_EOK;
         }
         break;
