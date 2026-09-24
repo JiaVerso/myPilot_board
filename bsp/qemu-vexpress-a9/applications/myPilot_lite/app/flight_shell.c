@@ -5,6 +5,7 @@
 #endif
 
 #include "status.h"
+#include "flight_thread_app.h"
 
 static const char *flight_status_name(flight_status_t status)
 {
@@ -29,8 +30,8 @@ static int mypilot_status(int argc, char **argv)
     RT_UNUSED(argv);
 
     rt_kprintf("myPilot_lite: status=%s, loops=%u\n",
-               flight_status_name(mypilot_lite_get_status()),
-               (unsigned int)mypilot_lite_get_loop_count());
+               flight_status_name(get_status()),
+               (unsigned int)get_loop_count());
     return 0;
 }
 MSH_CMD_EXPORT(mypilot_status, show myPilot_lite runtime status);

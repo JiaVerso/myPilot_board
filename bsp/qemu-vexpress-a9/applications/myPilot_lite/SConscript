@@ -3,19 +3,21 @@ from building import *
 cwd = GetCurrentDir()
 
 src = []
-src += Glob('app/*.c')
-src += Glob('port/*.c')
-src += Glob('simulator/*.c')
-src += Glob('core/math/*.c')
-src += Glob('core/filter/*.c')
-src += Glob('core/attitude/*.c')
-src += Glob('core/control/*.c')
-src += Glob('core/mixer/*.c')
-src += Glob('middleware/topic/*.c')
+src = Glob('app/*.c') + Glob('app/*.cpp')
+src = Glob('port/*.c')
+src = Glob('simulator/*.c')
+src = Glob('core/math/*.c')
+src = Glob('core/filter/*.c')
+src = Glob('core/attitude/*.c')
+src = Glob('core/control/*.c')
+src = Glob('core/mixer/*.c')
+src = Glob('middleware/topic/*.c')
 src += Glob('Driver/MP_Baro/*.cpp')
 
-CPPPATH = [cwd + '/include',
-           cwd + '/Driver/MP_Baro']
+# CPPPATH = [cwd + '/include',
+#            cwd + '/Driver/MP_Baro']
+
+CPPPATH = [cwd + '/include']
 
 group = DefineGroup('myPilot_lite', src,
                     depend=['BSP_USING_MYPILOT_LITE'],
