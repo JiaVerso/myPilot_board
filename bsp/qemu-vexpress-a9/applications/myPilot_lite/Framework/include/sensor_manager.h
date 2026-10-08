@@ -1,21 +1,29 @@
 /*
- * File      : sensor.h
+ * File      : sensor_manager.h
+ * This file is part of RT-Thread RTOS
+ * COPYRIGHT (C) 2026, Fy Development Team
  *
+ * The license and distribution terms for this file may be
+ * found in the file LICENSE in this distribution or at
+ * http://www.rt-thread.org/license/LICENSE
  *
+ * Infineon XENSIV DPS368 pressure sensor driver for RT-Thread.
+ *
+ * The register layout, coefficient decoding and scaling factors follow the
+ * Infineon arduino-xensiv-dps3xx reference driver (DPS368/DPS310 family). 
+ * 
  * Change Logs:
- * Date           Author       	Notes
- * 2016-6-20      zoujiachi   	the first version
+ * Date           Author       Notes
+ * 2026-10-08     JiaVerso      first commit.
  */
- 
-#ifndef __SENSOR_H__
-#define __SENSOR_H__
+
+#ifndef __SENSOR_MANAGER_H__
+#define __SENSOR_MANAGER_H__
 
 #include <rtthread.h>
 #include <stdint.h>
 
-//#define USE_EXTERNAL_MAG_DEV
-
-//#define USE_LIDAR
+#include "MP_Baro_DPS368.h"
 
 #ifdef USE_LIDAR
 	#ifdef BLUEJAY	
@@ -37,10 +45,6 @@
 #define BARO_DEVICE_NAME		"baro"
 #define GPS_DEVICE_NAME			"gps"
 #define LIDAR_DEVICE_NAME		"lidar"
-
-#define RAW_TEMPERATURE_POS			0
-#define RAW_PRESSURE_POS			1
-#define COLLECT_DATA_POS			2
 
 #define GYR_ACC_UPDATE_INTERVAL		2
 #define MAG_UPDATE_INTERVAL			10
@@ -66,10 +70,6 @@
 //gyr cmd
 #define SENSOR_SET_GYR_RANGE		0x20
 
-//baro cmd
-#define SENSOR_CONVERSION			0x30
-#define SENSOR_IS_CONV_FIN			0x31
-
   /* imu channels configuration */
 typedef struct {
     const char*    name;            
@@ -81,14 +81,15 @@ typedef struct {
     uint32_t       err_cnt;
 } Imu_Channel_t;
 
-typedef enum
-{
-	S_CONV_1 = 0,
-	S_RAW_PRESS,
-	S_CONV_2,
-	S_RAW_TEMP,
-	S_COLLECT_REPORT
-}Baro_Machine_State;
+typedef struct {
+    float pressure_pa;
+    float temperature_c;
+    
+    float altitude;		/* NED: 向下为正，向上为负 */
+
+    uint32_t time_stamp;
+    uint32_t sequence;
+} Baro_Report_Def;
 
 typedef struct
 {
@@ -141,10 +142,10 @@ rt_err_t sensor_gyr_measure(float gyr[3]);
 rt_err_t sensor_gyr_get_calibrated_data(float gyr[3]);
 
 /* barometer API */
-Baro_Machine_State sensor_baro_get_state(void);
+rt_err_t sensor_baro_update(void);
 Baro_Report_Def* sensor_baro_get_report(void);
 Baro_Position_t sensor_baro_get_position(void);
-rt_err_t sensor_process_bar_ostate_machine(void);
+
 bool sensor_baro_get_update_flag(void);
 void sensor_baro_clear_update_flag(void);
 

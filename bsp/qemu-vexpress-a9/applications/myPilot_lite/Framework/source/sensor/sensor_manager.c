@@ -13,10 +13,10 @@
 #include <math.h>
 #include <stdlib.h>
 #include "console.h"
-#include "ms5611.h"
 #include "gps.h"
 #include "param.h"
 #include "sensor_manager.h"
+#include "MP_Baro_DPS368.h"
 #include "lsm303d.h"
 #include "l3gd20h.h"
 #include "hmc5883.h"
@@ -31,9 +31,6 @@
 #include "att_estimator.h"
 #include "pos_estimator.h"
 #include "calibration.h"
-
-#define ADDR_CMD_CONVERT_D1			0x48	/* write to this address to start pressure conversion */
-#define ADDR_CMD_CONVERT_D2			0x58	/* write to this address to start temperature conversion */
 
 #define BARO_UPDATE_INTERVAL    10
 
@@ -139,7 +136,7 @@ MCN_DEFINE(SENSOR_MAG, 12);
 MCN_DEFINE(SENSOR_FILTER_GYR, 12);	
 MCN_DEFINE(SENSOR_FILTER_ACC, 12);
 MCN_DEFINE(SENSOR_FILTER_MAG, 12);
-MCN_DEFINE(SENSOR_BARO, sizeof(MS5611_REPORT_Def));
+MCN_DEFINE(SENSOR_BARO, sizeof(Baro_Report_Def));
 MCN_DEFINE(SENSOR_LIDAR, sizeof(float));
 MCN_DEFINE(CORRECT_LIDAR, sizeof(float));
 MCN_DEFINE(BARO_POSITION, sizeof(Baro_Position_t));
@@ -369,110 +366,34 @@ uint8_t sensor_get_device_id(char* device_name)
 }
 
 /**************************	BARO API **************************/
+static Baro_Report_Def s_baro_report;
+static float s_baro_reference_pressure = 0.0f;
+static bool s_baro_reference_valid = false;
 
-/* create baro object*/ 
-static Baro_Machine_State s_baro_state;
-static Baro_Position_t s_baro_pos;  
-
-static rt_err_t _baro_trig_conversion(uint8_t addr)
+ /* baro transform altitude */
+static float baro_pressure_to_altitude(float pressure_pa)
 {
-	return rt_device_control(baro_device_t, SENSOR_CONVERSION, (void*)&addr);
+    if (s_baro_reference_pressure <= 0.0f)
+    {
+        return 0.0f;
+    }
+
+    return 44330.0f *
+           (1.0f - powf(pressure_pa / s_baro_reference_pressure,
+                        0.19029495f));
 }
 
- /* check if baro conversion is finished. */
-static rt_bool_t _baro_is_conv_finish(void)
+ /* baro transform absolute altitude */
+static float baro_pressure_to_altitude_asl(float pressure_pa)
 {
-	if(rt_device_control(baro_device_t, SENSOR_IS_CONV_FIN, RT_NULL) == RT_EOK)
-	{
-		return RT_TRUE;
-	}else
-	{
-		return RT_FALSE;
-	}
-}
+    if (pressure_pa <= 0.0f)
+    {
+        return 0.0f;
+    }
 
-static rt_err_t _baro_read_raw_temp(void)
-{
-	rt_err_t err;
-	if(rt_device_read(baro_device_t, RAW_TEMPERATURE_POS, NULL, 1))
-		err = RT_EOK;
-	else
-		err = RT_ERROR;
-	
-	return err;
-}
-
-static rt_err_t _baro_read_raw_press(void)
-{
-	rt_err_t err;
-	if(rt_device_read(baro_device_t, RAW_PRESSURE_POS, NULL, 1))
-		err = RT_EOK;
-	else
-		err = RT_ERROR;
-	
-	return err;
-}
-
-/* 
-* 非阻塞状态机实现
-* There are 5 steps to get barometer report
-* 1: convert D1
-* 2: read pressure raw data
-* 3: convert D2
-* 4: read temperature raw dara
-* 5: compute temperature,pressure,altitute according to prom param.
-*/
-rt_err_t sensor_process_bar_ostate_machine(void)
-{
-	rt_err_t err = RT_ERROR;
-
-	switch((uint8_t)s_baro_state)
-	{
-		case S_CONV_1:
-		{
-			err = _baro_trig_conversion(ADDR_CMD_CONVERT_D1);     /* start */
-			if(err == RT_EOK)
-				s_baro_state = S_CONV_2;
-		}break;
-		case S_CONV_2:
-		{
-			if(!_baro_is_conv_finish()){	/* need 9.04ms to converse */
-				err = RT_EBUSY;
-			}else{
-				err = _baro_read_raw_press();
-				if(err == RT_EOK){
-					/* directly start D2 conversion */
-					err = _baro_trig_conversion(ADDR_CMD_CONVERT_D2);
-					if(err == RT_EOK)
-						s_baro_state = S_COLLECT_REPORT;
-					else
-						s_baro_state = S_CONV_1;
-				}
-				else
-					s_baro_state = S_CONV_1;	//if err, restart
-			}
-		}break;
-		case S_COLLECT_REPORT:
-		{
-			if(!_baro_is_conv_finish()){	//need 9.04ms to converse
-				err = RT_EBUSY;
-			}else{
-				s_baro_state = S_CONV_1;
-				err = _baro_read_raw_temp();
-				if(err == RT_EOK){
-					if(rt_device_read(baro_device_t, COLLECT_DATA_POS, (void*)&s_report_baro, 1)){
-						/* start D1 conversion */
-						if(_baro_trig_conversion(ADDR_CMD_CONVERT_D1) == RT_EOK)
-							s_baro_state = S_CONV_2;
-					}else{
-						err = RT_ERROR;
-					}
-				}
-			}
-		}break;
-	}
-	
-	return err;
+    return 44330.0f *
+           (1.0f - powf(pressure_pa / 101325.0f,
+                        0.19029495f));
 }
 
 bool sensor_baro_ready(void)
@@ -500,36 +421,70 @@ void sensor_baro_clear_update_flag(void)
 	_baro_update_flag = false;
 }
 
-bool sensor_baro_update(void)
+rt_err_t sensor_baro_update(void)
 {
-	rt_err_t res;
-	
-	if(sensor_baro_get_state() == S_COLLECT_REPORT){
-		res = sensor_process_baro_state_machine();
-		//get report;
-		if(res == RT_EOK){
-			_baro_update_flag = true;
-			return true;
-		}
-	}else{
-		res = sensor_process_baro_state_machine();
-	}
+    struct mp_baro_dps368_report dps_report;
+    rt_ssize_t size;
 
-	return false;
+    if (baro_device_t == RT_NULL)
+    {
+        return -RT_ENOSYS;
+    }
+
+    size = rt_device_read(baro_device_t,
+                          0,
+                          &dps_report,
+                          sizeof(dps_report));
+
+    /*
+     * 未准备好或 I2C 失败时返回 0。
+     */
+    if (size != sizeof(dps_report))
+    {
+        return -RT_EBUSY;
+    }
+
+    if (!isfinite(dps_report.pressure_pa) ||
+        !isfinite(dps_report.temperature_c) ||
+        dps_report.pressure_pa < 30000.0f ||
+        dps_report.pressure_pa > 120000.0f)
+    {
+        return -RT_ERROR;
+    }
+
+    /*
+     * 首帧建立相对高度基准。
+     */
+    if (!s_baro_reference_valid)
+    {
+        s_baro_reference_pressure = dps_report.pressure_pa;
+        s_baro_reference_valid = true;
+    }
+
+    s_baro_report.pressure_pa = dps_report.pressure_pa;
+    s_baro_report.temperature_c = dps_report.temperature_c;
+
+	/* time_stamp: ms */
+    s_baro_report.time_stamp =
+        (uint32_t)(dps_report.timestamp_us / 1000ULL);
+
+    s_baro_report.sequence = dps_report.sequence;
+
+    s_baro_report.altitude =
+        baro_pressure_to_altitude(dps_report.pressure_pa);
+
+    _baro_update_flag = true;
+
+    return RT_EOK;
 }
 
-
-Baro_Machine_State sensor_baro_get_state(void)
-{
-	return s_baro_state;
-}
 
 Baro_Report_Def* sensor_baro_get_report(void)
 {
 #ifdef HIL_SIMULATION
-	mcn_copy_from_hub(MCN_ID(SENSOR_BARO), &report_baro);
+	mcn_copy_from_hub(MCN_ID(SENSOR_BARO), &s_baro_report);
 #endif
-	return &report_baro;
+	return &s_baro_report;
 }
 
 Baro_Position_t sensor_baro_get_position(void)
@@ -540,45 +495,63 @@ Baro_Position_t sensor_baro_get_position(void)
  /* barometer data collection */
 static void _baro_process(void)
 {
-    if (!sensor_baro_ready() || !sensor_baro_update()) {
+    Baro_Report_Def *rpt;
+    float alt;
+    float dt;
+    float vel_raw;
+
+    if (!sensor_baro_ready())
+    {
         return;
     }
 
-    Baro_Report_Def* rpt = sensor_baro_get_report();
-    RT_ASSERT(rpt != NULL);
- 
-    float alt = -rpt->altitude;                 /* 气压高度向上为正，转NED */
- 
-    if (!s_baro.inited) {
-        /* 首帧只建立基准：避免异常dt与速度尖峰 */
-        s_baro.inited   = true;
-        s_baro.last_alt = alt;
-        s_baro.last_ms  = rpt->time_stamp;
-        s_baro_pos.altitude   = alt;
-        s_baro_pos.velocity   = 0.0f;
-        s_baro_pos.time_stamp = rpt->time_stamp;
-        mcn_publish(MCN_ID(SENSOR_BARO), rpt);
-        mcn_publish(MCN_ID(BARO_POSITION), &s_baro_pos);
+    if (sensor_baro_update() != RT_EOK)
+    {
         return;
     }
- 
-    float dt = (float)(rpt->time_stamp - s_baro.last_ms) * 1e-3f;
-    if (dt <= 0.0f) {
-        dt = BARO_DT_FALLBACK_S;                /* 时间戳重复/回跳时兜底 */
+
+    rpt = sensor_baro_get_report();
+
+	/* NED: 向下为正，向上为负 */
+    alt = -rpt->altitude;
+
+    if (!s_baro.inited)
+    {
+        s_baro.inited = true;
+        s_baro.last_alt = alt;
+        s_baro.last_ms = rpt->time_stamp;
+
+        s_baro_pos.altitude = alt;
+        s_baro_pos.velocity = 0.0f;
+        s_baro_pos.time_stamp = rpt->time_stamp;
+
+        mcn_publish(MCN_ID(SENSOR_BARO), rpt);
+        mcn_publish(MCN_ID(BARO_POSITION), &s_baro_pos);
+
+        return;
     }
- 
-    float vel_raw = (alt - s_baro.last_alt) / dt;
-    /* 注意：固定alpha与采样率绑定；若baro间隔不均，建议改为
-       alpha = dt / (BARO_VEL_TAU + dt) 的形式 */
-    s_baro_pos.velocity += BARO_VEL_LPF_ALPHA * (vel_raw - s_baro_pos.velocity);
-    s_baro_pos.altitude   = alt;
+
+    dt = (float)(rpt->time_stamp - s_baro.last_ms) * 1e-3f;
+
+    if (dt <= 0.0f || dt > 1.0f)
+    {
+        dt = BARO_DT_FALLBACK_S;
+    }
+
+    vel_raw = (alt - s_baro.last_alt) / dt;
+
+	/* 一阶低通滤波 */ 
+    s_baro_pos.velocity +=
+        BARO_VEL_LPF_ALPHA * (vel_raw - s_baro_pos.velocity);
+
+    s_baro_pos.altitude = alt;
     s_baro_pos.time_stamp = rpt->time_stamp;
- 
+
     mcn_publish(MCN_ID(SENSOR_BARO), rpt);
     mcn_publish(MCN_ID(BARO_POSITION), &s_baro_pos);
- 
+
     s_baro.last_alt = alt;
-    s_baro.last_ms  = rpt->time_stamp;
+    s_baro.last_ms = rpt->time_stamp;
 }
  
 
@@ -758,7 +731,10 @@ rt_err_t device_sensor_init(void)
 #ifdef USE_EXTERNAL_MAG_DEV
 	res |= rt_hmc5883_init("i2c1");
 #endif
-	res |= rt_ms5611_init("spi_d3");
+
+#ifndef MYPILOT_USING_DPS368
+    res |= mp_baro_dps368_register("baro", "i2c1", 0x77);
+#endif
 	res |= rt_mpu6000_init("spi_d4");
 	res |= rt_gps_init("uart4" , &gps_position , &satellite_info);
 	
@@ -791,15 +767,23 @@ rt_err_t device_sensor_init(void)
 	rt_device_open(gyr_device_t , RT_DEVICE_OFLAG_RDWR);
 	
 	/* init barometer device */
-	baro_state = S_CONV_1;
 	baro_device_t = rt_device_find(BARO_DEVICE_NAME);
 	if(baro_device_t == RT_NULL)
 	{
 		Console.e(TAG, "can't find baro device\r\n");
 		return RT_EEMPTY;
 	}
-	rt_device_open(baro_device_t , RT_DEVICE_OFLAG_RDWR);
+
+	rt_err_t baro_open_res =
+    	rt_device_open(baro_device_t, RT_DEVICE_OFLAG_RDONLY);
 	
+	if (baro_open_res != RT_EOK)
+	{
+		Console.e(TAG, "open barometer failed: %d\r\n", baro_open_res);
+		return baro_open_res;
+	}
+		
+
 	/* init gps device */
 	gps_device_t = rt_device_find(GPS_DEVICE_NAME);
 	if(gps_device_t == RT_NULL)
@@ -1074,28 +1058,6 @@ void sensor_collect(void)
 			_mag_update_flag = true;
 		}else{
 			Console.e(TAG, "fail to get mag data\n");
-		}
-	}
-
-	if(sensor_baro_ready()){
-		if(sensor_baro_update()){
-			
-			MS5611_REPORT_Def* baro_report = sensor_baro_get_report();
-
-			float dt = (float)(baro_report->time_stamp-_baro_last_time)*1e-3;
-			_baro_pos.time_stamp = baro_report->time_stamp;
-			if(dt <= 0.0f)
-				dt = 0.02f;
-			
-			_baro_pos.altitude = -baro_report->altitude; // change to NED coordinate
-			float vel = (_baro_pos.altitude-_baro_last_alt)/dt;
-			_baro_pos.velocity = _baro_pos.velocity + 0.05*(vel-_baro_pos.velocity);
-			
-			mcn_publish(MCN_ID(SENSOR_BARO), baro_report);
-			mcn_publish(MCN_ID(BARO_POSITION), &_baro_pos);
-			
-			_baro_last_alt = _baro_pos.altitude;
-			_baro_last_time = baro_report->time_stamp;
 		}
 	}
 	

@@ -27,7 +27,7 @@ if MYPILOT_USING_DPS368
 
 config MYPILOT_DPS368_DEVICE_NAME
     string "DPS368 RT-Thread device name"
-    default "baro0"
+    default "baro"
 
 config MYPILOT_DPS368_I2C_BUS_NAME
     string "DPS368 I2C bus name"
