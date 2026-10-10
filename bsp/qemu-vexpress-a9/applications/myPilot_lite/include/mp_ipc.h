@@ -34,10 +34,10 @@ typedef struct control_output
     rt_uint8_t valid;
 } control_output_t;
 
-rt_err_t flight_ipc_init(void);
-rt_mq_t flight_imu_mq(void);
-rt_event_t flight_event(void);
-rt_mutex_t flight_attitude_mutex(void);
-rt_sem_t flight_imu_sem(void);
+rt_err_t mp_ipc_init(void);
+rt_mq_t mp_imu_mq(void);
+rt_event_t mp_event(void);
+rt_mutex_t mp_attitude_mutex(void);
+rt_sem_t mp_imu_sem(void);
 
 #endif

@@ -10,11 +10,11 @@
 
 static struct rt_messagequeue imu_mq;
 static rt_uint8_t msg_pool[IMU_QUEUE_LENGTH * sizeof(struct imu_sample)];
-static struct rt_event flight_event_object;
+static struct rt_event mp_event_object;
 static rt_sem_t dynamic_sem = RT_NULL;
 static struct rt_mutex attitude_mutex;
 
-rt_err_t flight_ipc_init(void)
+rt_err_t mp_ipc_init(void)
 {
     rt_err_t ret;
 
@@ -30,8 +30,8 @@ rt_err_t flight_ipc_init(void)
         return ret;
     }
 
-    ret = rt_event_init(&flight_event_object,
-                        "flight_event",
+    ret = rt_event_init(&mp_event_object,
+                        "mp_event",
                         RT_IPC_FLAG_PRIO);
     if (ret != RT_EOK)
     {
@@ -58,22 +58,22 @@ rt_err_t flight_ipc_init(void)
     return RT_EOK;
 }
 
-rt_mq_t flight_imu_mq(void)
+rt_mq_t mp_imu_mq(void)
 {
     return &imu_mq;
 }
 
-rt_event_t flight_event(void)
+rt_event_t mp_event(void)
 {
-    return &flight_event_object;
+    return &mp_event_object;
 }
 
-rt_mutex_t flight_attitude_mutex(void)
+rt_mutex_t mp_attitude_mutex(void)
 {
     return &attitude_mutex;
 }
 
-rt_sem_t flight_imu_sem(void)
+rt_sem_t mp_imu_sem(void)
 {
     return dynamic_sem;
 }
