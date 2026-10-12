@@ -183,6 +183,7 @@ mcn_sub_t mcn_subscribe(const char *name, rt_bool_t start_with_latest)
         return RT_NULL;
     }
 
+    /* 判断话题是否存在 */
     topic = mcn_find_topic(name);
     if (topic == RT_NULL)
     {
@@ -205,19 +206,15 @@ mcn_sub_t mcn_subscribe(const char *name, rt_bool_t start_with_latest)
         }
     }
 
+    /* 话题订阅对象溢出 */ 
     if (index == MCN_MAX_SUBSCRIBERS)
     {
         mcn_unlock();
         return RT_NULL;
     }
 
-    rt_snprintf(semaphore_name,
-                sizeof(semaphore_name),
-                "mcn%u",
-                subscriber_index);
-
     result = rt_sem_init(&subscriber->semaphore,
-                         semaphore_name,
+                         "mcn_semaphore",
                          0,
                          RT_IPC_FLAG_PRIO);
     if (result != RT_EOK)
@@ -235,7 +232,7 @@ mcn_sub_t mcn_subscribe(const char *name, rt_bool_t start_with_latest)
     return subscriber;
 }
 
-int mcn_publish(mcn_topic_t topic, const void *data)
+int mcn_publish(mcn_topic_t *topic, const void *data)
 {
     rt_uint32_t index;
 
@@ -249,6 +246,7 @@ int mcn_publish(mcn_topic_t topic, const void *data)
         return MCN_EBUSY;
     }
 
+    /* 从data源地址开始，拷贝size大小的内存区域到dest */
     memcpy(topic->data, data, topic->data_size);
     topic->sequence++;
 
@@ -256,6 +254,7 @@ int mcn_publish(mcn_topic_t topic, const void *data)
     {
         if (topic->subscribers[index] != RT_NULL)
         {
+            /* 唤醒订阅对象 */
             rt_sem_release(&topic->subscribers[index]->semaphore);
         }
     }
@@ -264,9 +263,10 @@ int mcn_publish(mcn_topic_t topic, const void *data)
     return MCN_OK;
 }
 
-int mcn_copy(mcn_sub_t subscriber, void *data, rt_bool_t only_if_updated)
+ /* 复制数据到订阅对象缓冲区 */
+int mcn_copy(mcn_subscriber_t *subscriber, const void *data, rt_bool_t only_if_updated)
 {
-    struct mcn_topic *topic;
+    mcn_topic_t *topic;
 
     if (subscriber == RT_NULL || data == RT_NULL || !subscriber->active)
     {
@@ -298,7 +298,8 @@ int mcn_copy(mcn_sub_t subscriber, void *data, rt_bool_t only_if_updated)
     return MCN_OK;
 }
 
-int mcn_wait(mcn_sub_t subscriber, rt_int32_t timeout, void *data)
+ /* 等待新数据到达 */
+int mcn_wait(mcn_subscriber_t *subscriber, rt_int32_t timeout, void *data)
 {
     int result;
     rt_err_t semaphore_result;
@@ -329,10 +330,11 @@ int mcn_wait(mcn_sub_t subscriber, rt_int32_t timeout, void *data)
     return mcn_copy(subscriber, data, RT_TRUE);
 }
 
-int mcn_unsubscribe(mcn_sub_t subscriber)
+ /* 取消订阅 */
+int mcn_unsubscribe(mcn_subscriber_t *subscriber)
 {
     rt_uint32_t index;
-    struct mcn_topic *topic;
+    mcn_topic_t *topic;
 
     if (subscriber == RT_NULL || !subscriber->active)
     {
@@ -368,7 +370,8 @@ int mcn_unsubscribe(mcn_sub_t subscriber)
     return MCN_OK;
 }
 
-uint32_t mcn_sequence(mcn_sub_t subscriber)
+ /* 获取订阅者的序列号 */
+uint32_t mcn_sequence(mcn_subscriber_t *subscriber)
 {
     rt_uint32_t sequence;
 
