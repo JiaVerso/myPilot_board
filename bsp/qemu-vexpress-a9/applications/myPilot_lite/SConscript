@@ -16,9 +16,11 @@ src += Glob('core/attitude/*.c')
 src += Glob('core/control/*.c')
 src += Glob('core/mixer/*.c')
 src += Glob('middleware/topic/*.c')
+src += Glob('middleware/mp_uMCN/*.c')
 
 CPPPATH = [cwd + '/include',
-           cwd + '/task_thread']
+           cwd + '/task_thread',
+           cwd + '/middleware/mp_uMCN']
 
 group = DefineGroup('myPilot_lite', src,
                     depend=['BSP_USING_MYPILOT_LITE'],
