@@ -263,7 +263,19 @@ int mcn_publish(mcn_topic_t *topic, const void *data)
     return MCN_OK;
 }
 
- /* 复制数据到订阅对象缓冲区 */
+/**
+ * @brief 复制数据到指定的接收缓冲区
+ *
+ * @param subscriber       订阅者句柄
+ * @param data             目标缓冲区指针
+ * @param only_if_updated  RT_TRUE / RT_FALSE
+ *
+ * @return  状态码：
+ *         - MCN_OK:      成功
+ *         - MCN_EINVAL:  无效
+ *         - MCN_EBUSY:   取锁失败
+ *         - MCN_ENODATA: 无新数据
+ */
 int mcn_copy(mcn_subscriber_t *subscriber, const void *data, rt_bool_t only_if_updated)
 {
     mcn_topic_t *topic;
@@ -285,6 +297,7 @@ int mcn_copy(mcn_subscriber_t *subscriber, const void *data, rt_bool_t only_if_u
         return MCN_EINVAL;
     }
 
+    /* 只有更新后才读取 */
     if (only_if_updated && topic->sequence == subscriber->last_sequence)
     {
         mcn_unlock();
