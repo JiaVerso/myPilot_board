@@ -48,10 +48,10 @@ int mcn_init(void);
 mcn_topic_t *mcn_advertise(const char *name, uint16_t data_size);
 mcn_sub_t mcn_subscribe(const char *name, rt_bool_t start_with_latest);
 int mcn_publish(mcn_topic_t *topic, const void *data);
-int mcn_copy(mcn_sub_t sub, void *data, rt_bool_t only_if_updated);
-int mcn_wait(mcn_sub_t sub, rt_int32_t timeout, void *data);
-int mcn_unsubscribe(mcn_sub_t sub);
-uint32_t mcn_sequence(mcn_sub_t sub);
+int mcn_copy(mcn_subscriber_t *subscriber, const void *data, rt_bool_t only_if_updated);
+int mcn_wait(mcn_subscriber_t *subscriber, rt_int32_t timeout, void *data);
+int mcn_unsubscribe(mcn_subscriber_t *subscriber);
+uint32_t mcn_sequence(mcn_subscriber_t *subscriber);
 
 #ifdef __cplusplus
 }
