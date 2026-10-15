@@ -373,7 +373,7 @@ int mcn_unsubscribe(mcn_subscriber_t *subscriber)
             topic->subscribers[index] = RT_NULL;
         }
     }
-
+ 
     subscriber->active = RT_FALSE;
     subscriber->topic = RT_NULL;
     subscriber->last_sequence = 0u;
