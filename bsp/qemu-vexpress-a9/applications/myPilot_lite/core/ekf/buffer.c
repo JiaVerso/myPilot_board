@@ -1,5 +1,6 @@
 /*
  * File      : buffer.c
+ * Agent     : GPT6-Astra
  * This file is part of RT-Thread RTOS
  * COPYRIGHT (C) 2026, Fy Development Team
  *
@@ -7,84 +8,95 @@
  */
 
 #include "buffer.h"
-
 #include <string.h>
 
 #define RING_BUFFER_MUTEX_NAME "rb_lock"
 
-static size_t ring_buffer_advance(const ring_buffer_t *buffer,
-                                  size_t index,
-                                  size_t amount)
+ /* 指针后移 */
+static uint32_t ring_buffer_advance(ring_buffer_t *buffer,
+                                    uint32_t index,
+                                    size_t size)
 {
-    amount %= buffer->capacity;
-    if (amount >= buffer->capacity - index)
-    {
-        return amount - (buffer->capacity - index);
-    }
-    return index + amount;
+    return (uint32_t)((index + size) % buffer->capacity);
 }
 
-static rt_bool_t ring_buffer_valid(const ring_buffer_t *buffer)
+/* 带回绕的写指针位置 */
+static uint32_t write_position(ring_buffer_t *buffer)
 {
-    return (buffer != RT_NULL && buffer->initialized != RT_FALSE && 
-            buffer->buffer != RT_NULL && buffer->capacity != 0U);
+    return buffer->write_wrap_count * buffer->capacity +
+           buffer->head;
 }
 
-static size_t ring_buffer_copy_in_locked(ring_buffer_t *buffer,
+/* 带回绕的读指针位置 */
+static uint32_t read_position(ring_buffer_t *buffer)
+{
+    return buffer->read_wrap_count * buffer->capacity +
+           buffer->tail;
+}
+
+
+static uint32_t ring_buffer_free_space(ring_buffer_t *buffer)
+{
+    uint32_t write_pos = write_position(buffer);
+    uint32_t read_pos = read_position(buffer);
+    uint32_t used = write_pos - read_pos;
+
+    return (used >= buffer->capacity) ? 0U : (buffer->capacity - used);
+}
+
+ /* 写入拷贝 */
+static size_t ring_buffer_copy_in(ring_buffer_t *buffer,
                                          const uint8_t *data,
                                          size_t size)
 {
-    size_t first;
+    size_t first = buffer->capacity - buffer->head;
 
-    first = buffer->capacity - buffer->head_index;
     if (first > size)
     {
         first = size;
     }
 
-    memcpy(&buffer->buffer[buffer->head_index], data, first);
+    memcpy(&buffer->buf[buffer->head], data, first);
     if (size > first)
     {
-        memcpy(buffer->buffer, &data[first], size - first);
+        memcpy(buffer->buf, &data[first], size - first);
     }
-    buffer->head_index = ring_buffer_advance(buffer, buffer->head_index, size);
+
+    buffer->write_wrap_count += ((buffer->head + size) / buffer->capacity);
+    buffer->head = ring_buffer_advance(buffer, buffer->head, size);
     return size;
 }
 
-static size_t ring_buffer_copy_out_locked(ring_buffer_t *buffer,
+ /* 读出拷贝（只拷贝） */
+static size_t ring_buffer_copy_out(ring_buffer_t *buffer,
                                           uint8_t *data,
-                                          size_t size,
-                                          rt_bool_t remove)
+                                          size_t size)
 {
-    size_t first;
+    size_t first = buffer->capacity - buffer->tail;
 
-    first = buffer->capacity - buffer->tail_index;
     if (first > size)
     {
         first = size;
     }
 
-    memcpy(data, &buffer->buffer[buffer->tail_index], first);
+    memcpy(data, &buffer->buf[buffer->tail], first);
     if (size > first)
     {
-        memcpy(&data[first], buffer->buffer, size - first);
+        memcpy(&data[first], buffer->buf, size - first);
     }
 
-    if (remove != RT_FALSE)
-    {
-        buffer->tail_index = ring_buffer_advance(buffer, buffer->tail_index, size);
-        buffer->count -= size;
-    }
+    buffer->read_wrap_count += ((buffer->tail + size) / buffer->capacity);
+    buffer->tail = ring_buffer_advance(buffer, buffer->tail, size);
     return size;
 }
 
 rt_err_t ring_buffer_init(ring_buffer_t *buffer,
-                             char *storage,
-                             size_t storage_size)
+                          char *storage,
+                          uint32_t size)
 {
     rt_err_t result;
 
-    if (buffer == RT_NULL || storage == RT_NULL || storage_size == 0U)
+    if (buffer == RT_NULL || storage == RT_NULL || size == 0U)
     {
         return -RT_EINVAL;
     }
@@ -94,7 +106,6 @@ rt_err_t ring_buffer_init(ring_buffer_t *buffer,
         return -RT_EBUSY;
     }
 
-    /* init mutex */
     result = rt_mutex_init(&buffer->lock, RING_BUFFER_MUTEX_NAME,
                            RT_IPC_FLAG_PRIO);
     if (result != RT_EOK)
@@ -102,303 +113,117 @@ rt_err_t ring_buffer_init(ring_buffer_t *buffer,
         return result;
     }
 
-    buffer->buffer = storage;
-    buffer->capacity = storage_size;
-    buffer->head_index = 0U;
-    buffer->tail_index = 0U;
-    buffer->count = 0U;
+    buffer->buf = storage;
+    buffer->capacity = size;
+    buffer->head = 0U;
+    buffer->tail = 0U;
     buffer->dropped_count = 0U;
+
+    buffer->write_wrap_count = 0U;
+    buffer->read_wrap_count = 0U;
     buffer->initialized = RT_TRUE;
 
     return RT_EOK;
 }
 
- /* release mutex */
 rt_err_t ring_buffer_release_mutex(ring_buffer_t *buffer)
 {
     rt_err_t result;
 
-    if (!ring_buffer_valid(buffer))
-    {
-        return -RT_EINVAL;
-    }
-
+    /* 脱离 */
     result = rt_mutex_detach(&buffer->lock);
     if (result == RT_EOK)
     {
         buffer->initialized = RT_FALSE;
-        buffer->buffer = RT_NULL;
+        buffer->buf = RT_NULL;
         buffer->capacity = 0U;
-        buffer->head_index = 0U;
-        buffer->tail_index = 0U;
-        buffer->count = 0U;
+        buffer->head = 0U;
+        buffer->tail = 0U;
         buffer->dropped_count = 0U;
+        buffer->write_wrap_count = 0U;
+        buffer->read_wrap_count = 0U;
     }
     return result;
 }
 
- /* reset the buffer to its initial state. */
 rt_err_t ring_buffer_reset(ring_buffer_t *buffer)
 {
     rt_err_t result;
-
-    if (!ring_buffer_valid(buffer))
-    {
-        return -RT_EINVAL;
-    }
-
+    
     result = rt_mutex_take(&buffer->lock, RT_WAITING_FOREVER);
     if (result != RT_EOK)
     {
         return result;
     }
 
-    buffer->head_index = 0U;
-    buffer->tail_index = 0U;
-    buffer->count = 0U;
+    buffer->head = 0U;
+    buffer->tail = 0U;
     buffer->dropped_count = 0U;
+    buffer->write_wrap_count = 0U;
+    buffer->read_wrap_count = 0U;
 
     rt_mutex_release(&buffer->lock);
     return RT_EOK;
 }
 
- /* write the data to the buffer */
+/* Write data in two physical segments and account for every write wrap. */
 size_t ring_buffer_write(ring_buffer_t *buffer,
                          const void *data,
-                         uint32_t size)
+                         size_t size)
 {
-    uint32_t size_len = size;
-    uint32_t discarded;
-    uint32_t free_space;
+    uint8_t *src = (uint8_t *)data;
+    uint32_t first;
 
     if (rt_mutex_take(&buffer->lock, RT_WAITING_FOREVER) != RT_EOK)
     {
         return 0U;
     }
 
-    free_space = buffer->capacity - buffer->count;
+    uint32_t free_space = ring_buffer_free_space(buffer);
 
-    /* Discard any excess input data */
-    discarded = (size_len > free_space)
-                                ? (size_len - free_space)
-                                : 0U;
-    if (discarded != 0U)
+    /* when the input is larger than it. */
+    if (size > buffer->capacity)
     {
-        buffer->tail_index = ring_buffer_advance(buffer,
-                                                    buffer->tail_index,
-                                                    discarded);
-        buffer->count -= discarded;
+        size = buffer->capacity;
     }
 
-    if (UINT64_MAX - buffer->dropped_count <
-        (uint64_t)discarded)
-    {
-        buffer->dropped_count = UINT64_MAX;
-    }
-    else
-    {
-        buffer->dropped_count += (uint64_t)discarded;
-        if (UINT64_MAX - buffer->dropped_count <
-            (uint64_t)existing_discarded)
-        {
-            buffer->dropped_count = UINT64_MAX;
-        }
-        else
-        {
-            buffer->dropped_count += (uint64_t)existing_discarded;
-        }
-    }
+    ring_buffer_copy_in(buffer, src, size);
 
-
-    if (size_len != 0U)
+    /* 覆盖未读数据，tail_ptr 步进 */
+ 
+    uint32_t write_pos = write_position(buffer);
+    uint32_t read_pos  = read_position(buffer);
+    if (write_pos - read_pos > buffer->capacity)
     {
-        ring_buffer_copy_in_locked(buffer, (const uint8_t *)data, size_len);
-        buffer->count += size_len;
+        uint32_t overflow = write_pos - read_pos - buffer->capacity;   /* 被覆盖的旧字节数 */
+        read_pos += overflow;
+        buffer->read_wrap_count = read_pos / buffer->capacity;
+        buffer->tail = read_pos % buffer->capacity;
     }
 
     rt_mutex_release(&buffer->lock);
-    return size_len;
+    return ;
 }
 
-size_t ring_buffer_read(ring_buffer_t *buffer,
-                        void *data,
-                        size_t size)
+size_t ring_buffer_read(ring_buffer_t *buffer, void *data, size_t size)
 {
     size_t read_size;
 
-    if (!ring_buffer_valid(buffer) || (data == RT_NULL && size != 0U) ||
-        size == 0U)
+    if (buffer == RT_NULL || data == RT_NULL || size == 0U)
     {
         return 0U;
     }
-
     if (rt_mutex_take(&buffer->lock, RT_WAITING_FOREVER) != RT_EOK)
     {
         return 0U;
     }
 
-    read_size = (size < buffer->count) ? size : buffer->count;
+    read_size = size;
     if (read_size != 0U)
     {
-        ring_buffer_copy_out_locked(buffer, (uint8_t *)data, read_size,
-                                    RT_TRUE);
+        ring_buffer_copy_out(buffer, (uint8_t *)data, read_size);
     }
 
     rt_mutex_release(&buffer->lock);
     return read_size;
-}
-
-size_t ring_buffer_peek(ring_buffer_t *buffer,
-                        void *data,
-                        size_t size)
-{
-    size_t peek_size;
-
-    if (!ring_buffer_valid(buffer) || (data == RT_NULL && size != 0U) ||
-        size == 0U)
-    {
-        return 0U;
-    }
-
-    if (rt_mutex_take(&buffer->lock, RT_WAITING_FOREVER) != RT_EOK)
-    {
-        return 0U;
-    }
-
-    peek_size = (size < buffer->count) ? size : buffer->count;
-    if (peek_size != 0U)
-    {
-        ring_buffer_copy_out_locked(buffer, (uint8_t *)data, peek_size,
-                                    RT_FALSE);
-    }
-
-    rt_mutex_release(&buffer->lock);
-    return peek_size;
-}
-
-uint8_t ring_buffer_see(ring_buffer_t *buffer, char *data, size_t index)
-{
-    size_t data_index;
-
-    if (!ring_buffer_valid(buffer) || data == RT_NULL)
-    {
-        return 0U;
-    }
-
-    if (rt_mutex_take(&buffer->lock, RT_WAITING_FOREVER) != RT_EOK)
-    {
-        return 0U;
-    }
-
-    if (index >= buffer->count)
-    {
-        rt_mutex_release(&buffer->lock);
-        return 0U;
-    }
-
-    data_index = ring_buffer_advance(buffer, buffer->tail_index, index);
-    *data = buffer->buffer[data_index];
-
-    rt_mutex_release(&buffer->lock);
-    return 1U;
-}
-
-size_t ring_buffer_capacity(ring_buffer_t *buffer)
-{
-    size_t capacity = 0U;
-
-    if (!ring_buffer_valid(buffer))
-    {
-        return 0U;
-    }
-    if (rt_mutex_take(&buffer->lock, RT_WAITING_FOREVER) == RT_EOK)
-    {
-        capacity = buffer->capacity;
-        rt_mutex_release(&buffer->lock);
-    }
-    return capacity;
-}
-
-size_t ring_buffer_num_items(ring_buffer_t *buffer)
-{
-    size_t count = 0U;
-
-    if (!ring_buffer_valid(buffer))
-    {
-        return 0U;
-    }
-    if (rt_mutex_take(&buffer->lock, RT_WAITING_FOREVER) == RT_EOK)
-    {
-        count = buffer->count;
-        rt_mutex_release(&buffer->lock);
-    }
-    return count;
-}
-
-size_t ring_buffer_free_space(ring_buffer_t *buffer)
-{
-    size_t free_space = 0U;
-
-    if (!ring_buffer_valid(buffer))
-    {
-        return 0U;
-    }
-    if (rt_mutex_take(&buffer->lock, RT_WAITING_FOREVER) == RT_EOK)
-    {
-        free_space = buffer->capacity - buffer->count;
-        rt_mutex_release(&buffer->lock);
-    }
-    return free_space;
-}
-
-uint64_t ring_buffer_dropped_count(ring_buffer_t *buffer)
-{
-    uint64_t dropped = 0U;
-
-    if (!ring_buffer_valid(buffer))
-    {
-        return 0U;
-    }
-    if (rt_mutex_take(&buffer->lock, RT_WAITING_FOREVER) == RT_EOK)
-    {
-        dropped = buffer->dropped_count;
-        rt_mutex_release(&buffer->lock);
-    }
-    return dropped;
-}
-
-uint8_t ring_buffer_is_empty(ring_buffer_t *buffer)
-{
-    return (ring_buffer_num_items(buffer) == 0U) ? 1U : 0U;
-}
-
-uint8_t ring_buffer_is_full(ring_buffer_t *buffer)
-{
-    if (!ring_buffer_valid(buffer))
-    {
-        return 0U;
-    }
-    return (ring_buffer_free_space(buffer) == 0U) ? 1U : 0U;
-}
-
-void ring_buffer_queue(ring_buffer_t *buffer, char data)
-{
-    (void)ring_buffer_write(buffer, &data, sizeof(data));
-}
-
-void ring_buffer_queue_arr(ring_buffer_t *buffer, const char *data, size_t size)
-{
-    (void)ring_buffer_write(buffer, data, size);
-}
-
-uint8_t ring_buffer_dequeue(ring_buffer_t *buffer, char *data)
-{
-    return (ring_buffer_read(buffer, data, sizeof(*data)) == sizeof(*data))
-               ? 1U
-               : 0U;
-}
-
-size_t ring_buffer_dequeue_arr(ring_buffer_t *buffer, char *data, size_t len)
-{
-    return ring_buffer_read(buffer, data, len);
 }

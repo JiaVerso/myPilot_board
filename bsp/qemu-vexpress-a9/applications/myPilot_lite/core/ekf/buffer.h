@@ -25,18 +25,17 @@ extern "C" {
 
 #define RING_BUFFER_ASSERT(x) RT_ASSERT(x)
 
-/* Kept for source compatibility. Power-of-two storage is no longer required. */
-#define RING_BUFFER_IS_POWER_OF_TWO(buffer_size) \
-    ((buffer_size) != 0U && (((buffer_size) & ((buffer_size) - 1U)) == 0U))
-
 typedef struct
 {
-    char *buffer;
-    size_t head_index;  /* write position */
-    size_t tail_index;  /* read position */
+    char *buf;
+    uint32_t head; /* physical write index, always < capacity */
+    uint32_t tail; /* physical read index, always < capacity */
+
     uint32_t capacity;
-    uint32_t count;
     uint32_t dropped_count;
+
+    uint32_t write_wrap_count; /* laps completed by the write cursor */
+    uint32_t read_wrap_count;  /* laps completed by the read cursor */
 
     struct rt_mutex lock;
     rt_bool_t initialized;
@@ -48,7 +47,7 @@ typedef struct
  */
 rt_err_t ring_buffer_init(ring_buffer_t *buffer,
                           char *storage,
-                          size_t storage_size);
+                          uint32_t size);
 
 /** Detach the embedded RT-Thread mutex. The buffer must be quiescent. */
 rt_err_t ring_buffer_release_mutex(ring_buffer_t *buffer);
@@ -59,9 +58,10 @@ rt_err_t ring_buffer_reset(ring_buffer_t *buffer);
 /**
  * Write up to size bytes as one atomic operation.
  *
- * With RING_BUFFER_OVERWRITE_OLDEST, all input bytes are accepted and the
- * oldest bytes are discarded as necessary. With RING_BUFFER_REJECT_NEW,
- * at most the currently free capacity is accepted.
+ * The buffer always keeps the newest bytes: queued data is overwritten
+ * oldest-first when the new data does not fit, and an oversized write keeps
+ * only its last capacity bytes. The return value is the number of bytes that
+ * were stored, i.e. min(size, capacity).
  */
 size_t ring_buffer_write(ring_buffer_t *buffer,
                          const void *data,
@@ -71,29 +71,6 @@ size_t ring_buffer_write(ring_buffer_t *buffer,
 size_t ring_buffer_read(ring_buffer_t *buffer,
                         void *data,
                         size_t size);
-
-/** Copy up to size bytes without removing them. */
-size_t ring_buffer_peek(ring_buffer_t *buffer,
-                        void *data,
-                        size_t size);
-
-/** Return the byte at zero-based offset from the oldest queued byte. */
-uint8_t ring_buffer_see(ring_buffer_t *buffer,
-                        char *data,
-                        size_t index);
-
-size_t ring_buffer_capacity(ring_buffer_t *buffer);
-size_t ring_buffer_num_items(ring_buffer_t *buffer);
-size_t ring_buffer_free_space(ring_buffer_t *buffer);
-uint64_t ring_buffer_dropped_count(ring_buffer_t *buffer);
-uint8_t ring_buffer_is_empty(ring_buffer_t *buffer);
-uint8_t ring_buffer_is_full(ring_buffer_t *buffer);
-
-/* Compatibility helpers used by the original implementation. */
-void ring_buffer_queue(ring_buffer_t *buffer, char data);
-void ring_buffer_queue_arr(ring_buffer_t *buffer, const char *data, size_t size);
-uint8_t ring_buffer_dequeue(ring_buffer_t *buffer, char *data);
-size_t ring_buffer_dequeue_arr(ring_buffer_t *buffer, char *data, size_t len);
 
 #ifdef __cplusplus
 }
