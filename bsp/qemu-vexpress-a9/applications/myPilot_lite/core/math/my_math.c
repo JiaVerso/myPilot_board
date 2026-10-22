@@ -14,9 +14,11 @@
  * 2026-09-16     JiaVerso      compile and commit.
  */
 
-#include <string.h>
-#include <math.h>
 #include "my_math.h"
+
+#include <math.h>
+#include <stddef.h>
+#include <string.h>
 
 // 快速计算“平方根的倒数”。
 float fast_invSqrt(float number)
@@ -218,4 +220,84 @@ float constrain_float(float amt, float low, float high)
 uint32_t constrain_uint32(uint32_t amt, uint32_t low, uint32_t high)
 {
 	return ((amt)<(low)?(low):((amt)>(high)?(high):(amt)));
+}
+
+
+ /* -------------------------------------------------------------- */
+ /*
+  * The EKF depends on this interface, not directly on CMSIS-DSP. 
+  *
+ /* -------------------------------------------------------------- */
+math_status_t my_matrix_init(math_matrixf_t *matrix,
+                            uint16_t rows,
+                            uint16_t columns,
+                            float *data)
+{
+    if (matrix == NULL || data == NULL || rows == 0 || columns == 0) {
+        return MY_MATH_ARGUMENT_ERROR;
+    }
+
+    arm_mat_init_f32(matrix, rows, columns, data);
+    return MY_MATH_OK;
+}
+
+math_status_t my_matrix_dimensions(math_matrixf_t *matrix,
+                                   uint16_t rows,
+                                   uint16_t columns)
+{
+    if (matrix == NULL || rows == 0 || columns == 0) {
+        return MY_MATH_ARGUMENT_ERROR;
+    }
+
+    matrix->numRows = rows;
+    matrix->numCols = columns;
+    return MY_MATH_OK;
+}
+
+math_status_t my_matrix_add(const math_matrixf_t *left,
+                                 const math_matrixf_t *right,
+                                 math_matrixf_t *result)
+{
+    if (left == NULL || right == NULL || result == NULL) {
+        return MY_MATH_ARGUMENT_ERROR;
+    }
+    return arm_mat_add_f32(left, right, result);
+}
+
+math_status_t my_matrix_subtract(const math_matrixf_t *left,
+                                      const math_matrixf_t *right,
+                                      math_matrixf_t *result)
+{
+    if (left == NULL || right == NULL || result == NULL) {
+        return MY_MATH_ARGUMENT_ERROR;
+    }
+    return arm_mat_sub_f32(left, right, result);
+}
+
+math_status_t my_matrix_multiply(const math_matrixf_t *left,
+                                      const math_matrixf_t *right,
+                                      math_matrixf_t *result)
+{
+    if (left == NULL || right == NULL || result == NULL) {
+        return MY_MATH_ARGUMENT_ERROR;
+    }
+    return arm_mat_mult_f32(left, right, result);
+}
+
+math_status_t my_matrix_transpose(const math_matrixf_t *source,
+                                       math_matrixf_t *result)
+{
+    if (source == NULL || result == NULL) {
+        return MY_MATH_ARGUMENT_ERROR;
+    }
+    return arm_mat_trans_f32(source, result);
+}
+
+math_status_t my_matrix_inverse(const math_matrixf_t *source,
+                                     math_matrixf_t *result)
+{
+    if (source == NULL || result == NULL) {
+        return MY_MATH_ARGUMENT_ERROR;
+    }
+    return arm_mat_inverse_f32(source, result);
 }
