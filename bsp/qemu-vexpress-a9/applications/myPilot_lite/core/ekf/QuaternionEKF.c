@@ -47,12 +47,13 @@ static void *kf_alloc(size_t count, size_t element_size)
     return memory;
 }
 
-static void qe_sanitize_covariance(KalmanFilter_t *kf)
+static void qe_sanitize_covariance(kalman_filter_t *kf)
 {
     if (kf == NULL || !kf->Initialized) {
         return;
     }
 
+	/* 维护协方差矩阵的对称性( [P{ij} = P{ji} ) */
     for (uint8_t i = 0; i < kf->xhatSize; ++i) {
         for (uint8_t j = i + 1; j < kf->xhatSize; ++j) {
             const uint16_t ij = (uint16_t)(i * kf->xhatSize + j);
@@ -64,6 +65,7 @@ static void qe_sanitize_covariance(KalmanFilter_t *kf)
         }
     }
 
+	/* 约束对角线方差 */
     for (uint8_t i = 0; i < kf->xhatSize; ++i) {
         const uint16_t diagonal = (uint16_t)(i * kf->xhatSize + i);
         float value = kf->P_data[diagonal];
@@ -81,6 +83,7 @@ static void qe_sanitize_covariance(KalmanFilter_t *kf)
         kf->P_data[diagonal] = value;
     }
 
+	/* 约束协方差 */
     for (uint8_t i = 0; i < kf->xhatSize; ++i) {
         const uint16_t dii = (uint16_t)(i * kf->xhatSize + i);
         for (uint8_t j = i + 1; j < kf->xhatSize; ++j) {
@@ -106,9 +109,8 @@ static void qe_sanitize_covariance(KalmanFilter_t *kf)
 
 /*
  * Integrated generic linear Kalman framework.
- * These functions keep the names used by the original kalman_filter.c.
  */
-void Kalman_Filter_Init(KalmanFilter_t *kf,
+void Kalman_Filter_Init(kalman_filter_t *kf,
                         uint8_t xhatSize,
                         uint8_t uSize,
                         uint8_t zSize)
@@ -191,6 +193,7 @@ void Kalman_Filter_Init(KalmanFilter_t *kf,
         return;
     }
 
+	/* 多态 */
     (void)Matrix_Init(&kf->xhat, xhatSize, 1, kf->xhat_data);
     (void)Matrix_Init(&kf->xhatminus, xhatSize, 1, kf->xhatminus_data);
     if (uSize > 0) {
@@ -226,7 +229,8 @@ void Kalman_Filter_Init(KalmanFilter_t *kf,
     kf->MatStatus = MY_MATH_OK;
 }
 
-static void Kalman_Filter_Deinit(KalmanFilter_t *kf)
+ /* 回收已分配内存 */
+static void Kalman_Filter_Deinit(kalman_filter_t *kf)
 {
     if (kf == NULL) {
         return;
@@ -264,7 +268,7 @@ static void Kalman_Filter_Deinit(KalmanFilter_t *kf)
     kf->MatStatus = MY_MATH_ARGUMENT_ERROR;
 }
 
-void Kalman_Filter_Measure(KalmanFilter_t *kf)
+void Kalman_Filter_Measure(kalman_filter_t *kf)
 {
     if (kf == NULL || !kf->Initialized) {
         return;
@@ -284,7 +288,7 @@ void Kalman_Filter_Measure(KalmanFilter_t *kf)
     }
 }
 
-void Kalman_Filter_xhatMinusUpdate(KalmanFilter_t *kf)
+void Kalman_Filter_xhatMinusUpdate(kalman_filter_t *kf)
 {
     if (kf == NULL || !kf->Initialized || kf->SkipEq1) {
         return;
